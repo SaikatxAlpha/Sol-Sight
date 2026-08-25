@@ -1,0 +1,229 @@
+/* ============================================================
+   SolSight — design tokens
+   Concept: "night-shift control room" for a solar fleet.
+   Dark charcoal-navy base (not pure black), a warm solar-gold
+   signal color for the sun/energy story, an ultraviolet accent
+   for interactive/tech chrome, and punchy status colors that
+   read instantly at a glance across a grid of panel cards.
+   ============================================================ */
+
+:root {
+  /* --- surfaces --- */
+  --bg: #0a0d14;
+  --bg-raised: #10141d;
+  --surface: #141926;
+  --surface-hover: #1a2030;
+  --border: #232a3a;
+  --border-soft: #1b2130;
+
+  /* --- text --- */
+  --text-hi: #f2f4f8;
+  --text-mid: #a7b0c2;
+  --text-low: #626c81;
+
+  /* --- signal colors --- */
+  --gold: #f5b400;
+  --gold-soft: #4a3a12;
+  --violet: #8b7cff;
+  --violet-soft: #241f4a;
+
+  /* --- status colors --- */
+  --healthy: #3ddc84;
+  --healthy-soft: rgba(61, 220, 132, 0.12);
+  --warning: #ffb020;
+  --warning-soft: rgba(255, 176, 32, 0.12);
+  --critical: #ff5c7a;
+  --critical-soft: rgba(255, 92, 122, 0.14);
+
+  /* --- type --- */
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* --- geometry --- */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --shadow-glow-gold: 0 0 0 1px rgba(245, 180, 0, 0.15), 0 8px 30px -8px rgba(245, 180, 0, 0.25);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 30px -18px rgba(0, 0, 0, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-hi);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  /* signature texture: faint PV-cell hex grid, barely-there */
+  background-image:
+    radial-gradient(circle at 12% 8%, rgba(245, 180, 0, 0.06), transparent 40%),
+    radial-gradient(circle at 88% 82%, rgba(139, 124, 255, 0.06), transparent 42%),
+    repeating-linear-gradient(60deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 26px),
+    repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 26px);
+  background-attachment: fixed;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--gold);
+  color: #191200;
+}
+
+/* Focus visibility, kept even in a dark UI */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------- shared primitives ---------- */
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
+
+.h-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-hi);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+}
+
+.pill-healthy {
+  color: var(--healthy);
+  background: var(--healthy-soft);
+  border-color: rgba(61, 220, 132, 0.28);
+}
+.pill-warning {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: rgba(255, 176, 32, 0.3);
+}
+.pill-critical {
+  color: var(--critical);
+  background: var(--critical-soft);
+  border-color: rgba(255, 92, 122, 0.32);
+}
+
+.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: var(--radius-sm);
+  padding: 11px 18px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  background: var(--gold);
+  color: #191200;
+  box-shadow: var(--shadow-glow-gold);
+}
+
+.btn-primary:hover {
+  background: #ffc42b;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-mid);
+  border-color: var(--border);
+}
+
+.btn-ghost:hover {
+  color: var(--text-hi);
+  border-color: var(--text-low);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.input {
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 12px 14px;
+  transition: border-color 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--text-low);
+}
+
+.input:focus {
+  border-color: var(--gold);
+}
+
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-mid);
+  margin-bottom: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
