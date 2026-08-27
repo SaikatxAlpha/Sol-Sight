@@ -1,12 +1,14 @@
-"""
-MongoDB connection layer for SolSight.
-Uses Motor (async driver) so FastAPI route handlers can await DB calls directly.
-"""
 import os
+from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+load_dotenv()
+
+MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = os.getenv("MONGO_DB", "solsight")
+
+if not MONGO_URI:
+    raise RuntimeError("MONGO_URI is not set")
 
 client: AsyncIOMotorClient = AsyncIOMotorClient(MONGO_URI)
 db = client[DB_NAME]
@@ -22,4 +24,6 @@ async def ensure_indexes():
     await users_collection.create_index("email", unique=True)
     await panels_collection.create_index("panel_id", unique=True)
     await inspections_collection.create_index("panel_id")
-    await inspections_collection.create_index([("panel_id", 1), ("created_at", 1)])
+    await inspections_collection.create_index(
+        [("panel_id", 1), ("created_at", 1)]
+    )
