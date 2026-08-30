@@ -48,16 +48,16 @@ export default function UploadForm({ panelId, onResult }) {
     <form onSubmit={handleSubmit} className="card" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
       <div>
         <div className="eyebrow">New reading</div>
-        <div className="h-display" style={{ fontSize: 18, marginTop: 4 }}>
+        <div className="h-display" style={{ fontSize: 20, marginTop: 6 }}>
           Run an inspection
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-        <div>
-          <label className="label">Voltage (V)</label>
+        <div className="field">
+          <label className="field-label">Voltage (V)</label>
           <input
-            className="input"
+            className="field-input"
             type="number"
             step="0.01"
             required
@@ -66,10 +66,10 @@ export default function UploadForm({ panelId, onResult }) {
             placeholder="32.40"
           />
         </div>
-        <div>
-          <label className="label">Current (A)</label>
+        <div className="field">
+          <label className="field-label">Current (A)</label>
           <input
-            className="input"
+            className="field-input"
             type="number"
             step="0.01"
             required
@@ -78,10 +78,10 @@ export default function UploadForm({ panelId, onResult }) {
             placeholder="8.10"
           />
         </div>
-        <div>
-          <label className="label">Temp (°C)</label>
+        <div className="field">
+          <label className="field-label">Temp (°C)</label>
           <input
-            className="input"
+            className="field-input"
             type="number"
             step="0.1"
             required
@@ -92,24 +92,27 @@ export default function UploadForm({ panelId, onResult }) {
         </div>
       </div>
 
-      <div>
-        <label className="label">Panel image (optional — thermal or visual)</label>
+      <div className="field">
+        <label className="field-label">Panel image (optional — thermal or visual)</label>
         <div
           onClick={() => fileRef.current?.click()}
           style={{
-            border: "1px dashed var(--border)",
-            borderRadius: "var(--radius-sm)",
-            padding: preview ? 0 : 24,
+            border: "1px dashed var(--hairline)",
+            borderRadius: "var(--r-sm)",
+            padding: preview ? 0 : 26,
             textAlign: "center",
             cursor: "pointer",
             overflow: "hidden",
-            background: "var(--bg-raised)",
+            background: "var(--surface-3)",
+            transition: "border-color 0.15s var(--ease)",
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--amber)")}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--hairline)")}
         >
           {preview ? (
             <img src={preview} alt="Selected inspection" style={{ width: "100%", maxHeight: 180, objectFit: "cover", display: "block" }} />
           ) : (
-            <span style={{ color: "var(--text-low)", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+            <span style={{ color: "var(--ink-dim)", fontFamily: "var(--font-mono)", fontSize: 12.5 }}>
               tap to attach an image
             </span>
           )}
@@ -117,11 +120,9 @@ export default function UploadForm({ panelId, onResult }) {
         <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} hidden />
       </div>
 
-      {error && (
-        <div style={{ color: "var(--critical)", fontSize: 13, fontFamily: "var(--font-mono)" }}>{error}</div>
-      )}
+      {error && <div className="field-error">{error}</div>}
 
-      <button type="submit" className="btn btn-primary" disabled={loading}>
+      <button type="submit" className="btn btn-solid btn-block" disabled={loading}>
         {loading ? "Analyzing…" : "Analyze panel"}
       </button>
     </form>

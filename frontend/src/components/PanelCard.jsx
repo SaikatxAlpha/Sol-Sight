@@ -2,86 +2,70 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import HealthGauge from "./HealthGauge.jsx";
 
+const STATUS_CLASS = {
+  Healthy: "badge-healthy",
+  Warning: "badge-warning",
+  Critical: "badge-critical",
+};
+
 export default function PanelCard({ panel }) {
   const navigate = useNavigate();
   const hasData = panel.latest_health_score != null;
+  const go = () => navigate(`/panels/${panel.panel_id}`);
 
   return (
     <div
-      className="card"
-      onClick={() => navigate(`/panels/${panel.panel_id}`)}
+      className={`card card-interactive${panel.latest_status ? ` card-accent-${panel.latest_status === "Healthy" ? "cyan" : "amber"}` : ""}`}
+      onClick={go}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && navigate(`/panels/${panel.panel_id}`)}
-      style={{
-        padding: 20,
-        cursor: "pointer",
-        display: "flex",
-        flexDirection: "column",
-        gap: 14,
-        transition: "border-color 0.15s ease, transform 0.15s ease",
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--text-low)")}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+      onKeyDown={(e) => e.key === "Enter" && go()}
+      style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
           <div className="eyebrow">{panel.location}</div>
-          <div className="h-display" style={{ fontSize: 20, marginTop: 4 }}>
+          <div
+            className="h-mono"
+            style={{ fontSize: 18, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
             {panel.panel_id}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-low)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--ink-dim)", fontFamily: "var(--font-mono)", marginTop: 4 }}>
             {panel.rated_power}W rated
           </div>
         </div>
         {panel.latest_status && (
-          <span
-            className={`pill pill-${panel.latest_status.toLowerCase()}`}
-          >
-            <Dot color={`var(--${panel.latest_status.toLowerCase()})`} />
+          <span className={`badge ${STATUS_CLASS[panel.latest_status] || ""}`}>
+            <span className="badge-dot" />
             {panel.latest_status}
           </span>
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}>
+      <div style={{ display: "flex", justifyContent: "center", padding: "2px 0 4px" }}>
         {hasData ? (
-          <HealthGauge score={panel.latest_health_score} status={panel.latest_status} size={128} />
+          <HealthGauge score={panel.latest_health_score} status={panel.latest_status} size={140} />
         ) : (
           <div
             style={{
-              width: 128,
-              height: 128,
-              borderRadius: "50%",
-              border: "1px dashed var(--border)",
+              width: "100%",
+              padding: "22px 12px",
+              borderRadius: "var(--r-sm)",
+              border: "1px dashed var(--hairline)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "var(--text-low)",
+              color: "var(--ink-dim)",
               fontFamily: "var(--font-mono)",
               fontSize: 12,
               textAlign: "center",
-              padding: 12,
             }}
           >
-            no inspections yet
+            awaiting first inspection
           </div>
         )}
       </div>
     </div>
-  );
-}
-
-function Dot({ color }) {
-  return (
-    <span
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: "50%",
-        background: color,
-        display: "inline-block",
-      }}
-    />
   );
 }

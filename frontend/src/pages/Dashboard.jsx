@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listPanels, createPanel, clearToken, me } from "../../api/client.js";
 import PanelCard from "../components/PanelCard.jsx";
+import NavBar from "../components/NavBar.jsx";
+import Modal from "../components/Modal.jsx";
 
 export default function Dashboard() {
   const [panels, setPanels] = useState([]);
@@ -35,64 +37,59 @@ export default function Dashboard() {
   const summary = summarize(panels);
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px 64px" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div className="eyebrow">Fleet overview{user ? ` · ${user.name}` : ""}</div>
-          <h1 className="h-display" style={{ fontSize: 32, margin: "6px 0 0" }}>
-            Your panels, at a glance.
-          </h1>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
+    <div className="app-shell">
+      <NavBar user={user} onLogout={handleLogout} />
+
+      <div className="container" style={{ padding: "36px 24px 64px" }}>
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 30, gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>Fleet overview</div>
+            <h1 className="h-display" style={{ fontSize: 32, margin: 0 }}>
+              Your panels, at a glance.
+            </h1>
+          </div>
+          <button className="btn btn-solid" onClick={() => setShowForm(true)}>
             + Add panel
           </button>
-          <button className="btn btn-ghost" onClick={handleLogout}>
-            Log out
-          </button>
-        </div>
-      </header>
+        </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 28 }}>
-        <StatCard label="Panels tracked" value={panels.length} accent="var(--gold)" />
-        <StatCard label="Needs attention" value={summary.warningOrCritical} accent="var(--warning)" />
-        <StatCard label="Critical" value={summary.critical} accent="var(--critical)" />
+        <div className="grid-stats" style={{ marginBottom: 28 }}>
+          <StatCard label="Panels tracked" value={panels.length} accent="cyan" />
+          <StatCard label="Needs attention" value={summary.warningOrCritical} accent="amber" />
+          <StatCard label="Critical" value={summary.critical} accent="bad" />
+        </div>
+
+        {loading && <div className="empty-state h-mono" style={{ padding: "40px 0", color: "var(--ink-dim)" }}>loading fleet…</div>}
+        {error && <div className="field-error" style={{ marginBottom: 20 }}>{error}</div>}
+
+        {!loading && panels.length === 0 && (
+          <div className="card empty-state">
+            <div className="h-display" style={{ fontSize: 20, marginBottom: 8 }}>No panels yet</div>
+            <p style={{ fontSize: 14, marginBottom: 18 }}>Add your first panel to start tracking its health.</p>
+            <button className="btn btn-solid" onClick={() => setShowForm(true)}>
+              + Add panel
+            </button>
+          </div>
+        )}
+
+        <div className="grid-panels">
+          {panels.map((p) => (
+            <PanelCard key={p.id} panel={p} />
+          ))}
+        </div>
       </div>
 
       {showForm && (
-        <AddPanelForm
-          onCreated={() => {
-            setShowForm(false);
-            refresh();
-          }}
-          onCancel={() => setShowForm(false)}
-        />
+        <Modal title="Add a panel" eyebrow="New asset" onClose={() => setShowForm(false)}>
+          <AddPanelForm
+            onCreated={() => {
+              setShowForm(false);
+              refresh();
+            }}
+            onCancel={() => setShowForm(false)}
+          />
+        </Modal>
       )}
-
-      {loading && <div style={{ color: "var(--text-low)", fontFamily: "var(--font-mono)" }}>loading fleet…</div>}
-      {error && <div style={{ color: "var(--critical)", fontFamily: "var(--font-mono)" }}>{error}</div>}
-
-      {!loading && panels.length === 0 && !showForm && (
-        <div className="card" style={{ padding: 40, textAlign: "center", color: "var(--text-mid)" }}>
-          <div className="h-display" style={{ fontSize: 18, marginBottom: 6 }}>No panels yet</div>
-          <p style={{ fontSize: 14, marginBottom: 16 }}>Add your first panel to start tracking its health.</p>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-            + Add panel
-          </button>
-        </div>
-      )}
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-          gap: 16,
-        }}
-      >
-        {panels.map((p) => (
-          <PanelCard key={p.id} panel={p} />
-        ))}
-      </div>
     </div>
   );
 }
@@ -104,12 +101,11 @@ function summarize(panels) {
 }
 
 function StatCard({ label, value, accent }) {
+  const color = accent === "amber" ? "var(--amber)" : accent === "bad" ? "var(--bad)" : "var(--cyan)";
   return (
-    <div className="card" style={{ padding: "18px 20px", borderLeft: `3px solid ${accent}` }}>
+    <div className="card stat" style={{ borderLeft: `2px solid ${color}` }}>
       <div className="eyebrow">{label}</div>
-      <div className="h-display" style={{ fontSize: 30, marginTop: 6 }}>
-        {value}
-      </div>
+      <div className="stat-value">{value}</div>
     </div>
   );
 }
@@ -142,29 +138,31 @@ function AddPanelForm({ onCreated, onCancel }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card" style={{ padding: 22, marginBottom: 24, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, alignItems: "end" }}>
-      <div>
-        <label className="label">Panel ID</label>
-        <input className="input" required value={panelId} onChange={(e) => setPanelId(e.target.value)} placeholder="PNL-014" />
+    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="field">
+        <label className="field-label">Panel ID</label>
+        <input className="field-input" required value={panelId} onChange={(e) => setPanelId(e.target.value)} placeholder="PNL-014" />
       </div>
-      <div>
-        <label className="label">Location</label>
-        <input className="input" required value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Rooftop A" />
+      <div className="field">
+        <label className="field-label">Location</label>
+        <input className="field-input" required value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Rooftop A" />
       </div>
-      <div>
-        <label className="label">Installed</label>
-        <input className="input" type="date" required value={installDate} onChange={(e) => setInstallDate(e.target.value)} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className="field">
+          <label className="field-label">Installed</label>
+          <input className="field-input" type="date" required value={installDate} onChange={(e) => setInstallDate(e.target.value)} />
+        </div>
+        <div className="field">
+          <label className="field-label">Rated power (W)</label>
+          <input className="field-input" type="number" required value={ratedPower} onChange={(e) => setRatedPower(e.target.value)} placeholder="400" />
+        </div>
       </div>
-      <div>
-        <label className="label">Rated power (W)</label>
-        <input className="input" type="number" required value={ratedPower} onChange={(e) => setRatedPower(e.target.value)} placeholder="400" />
-      </div>
-      {error && <div style={{ gridColumn: "1 / -1", color: "var(--critical)", fontSize: 13, fontFamily: "var(--font-mono)" }}>{error}</div>}
-      <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10 }}>
-        <button type="submit" className="btn btn-primary" disabled={loading}>
+      {error && <div className="field-error">{error}</div>}
+      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+        <button type="submit" className="btn btn-solid" style={{ flex: 1 }} disabled={loading}>
           {loading ? "Adding…" : "Add panel"}
         </button>
-        <button type="button" className="btn btn-ghost" onClick={onCancel}>
+        <button type="button" className="btn btn-line" onClick={onCancel}>
           Cancel
         </button>
       </div>

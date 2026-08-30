@@ -7,24 +7,28 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
 } from "recharts";
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
+  const point = payload[0];
+  const isProjected = point.dataKey === "projected";
   return (
     <div
       style={{
-        background: "var(--bg-raised)",
-        border: "1px solid var(--border)",
+        background: "var(--surface-2)",
+        border: "1px solid var(--hairline)",
         borderRadius: 10,
-        padding: "8px 12px",
+        padding: "9px 13px",
         fontFamily: "var(--font-mono)",
         fontSize: 12,
+        boxShadow: "var(--shadow-pop)",
       }}
     >
-      <div style={{ color: "var(--text-low)" }}>{label}</div>
-      <div style={{ color: "var(--gold)", fontWeight: 600 }}>
-        {payload[0].value}% health
+      <div style={{ color: "var(--ink-dim)", marginBottom: 2 }}>{label}</div>
+      <div style={{ color: isProjected ? "var(--cyan)" : "var(--amber)", fontWeight: 600 }}>
+        {point.value}% {isProjected ? "projected" : "recorded"}
       </div>
     </div>
   );
@@ -51,6 +55,7 @@ export default function DegradationChart({ history = [], forecast = [] }) {
       : [];
 
   const data = [...historyPoints, ...bridge, ...forecastPoints];
+  const todayLabel = bridge[0]?.label;
 
   return (
     <div style={{ width: "100%", height: 220 }}>
@@ -58,33 +63,36 @@ export default function DegradationChart({ history = [], forecast = [] }) {
         <AreaChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
           <defs>
             <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--gold)" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="var(--gold)" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--amber)" stopOpacity={0.35} />
+              <stop offset="100%" stopColor="var(--amber)" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="projectedFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--violet)" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="var(--violet)" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--cyan)" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="var(--cyan)" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="var(--border-soft)" vertical={false} />
+          <CartesianGrid stroke="var(--hairline-soft)" vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fill: "var(--text-low)", fontSize: 11, fontFamily: "var(--font-mono)" }}
-            axisLine={{ stroke: "var(--border)" }}
+            tick={{ fill: "var(--ink-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}
+            axisLine={{ stroke: "var(--hairline)" }}
             tickLine={false}
           />
           <YAxis
             domain={[0, 100]}
-            tick={{ fill: "var(--text-low)", fontSize: 11, fontFamily: "var(--font-mono)" }}
+            tick={{ fill: "var(--ink-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}
             axisLine={false}
             tickLine={false}
             width={34}
           />
+          {todayLabel && (
+            <ReferenceLine x={todayLabel} stroke="var(--hairline)" strokeDasharray="3 3" />
+          )}
           <Tooltip content={<CustomTooltip />} />
           <Area
             type="monotone"
             dataKey="actual"
-            stroke="var(--gold)"
+            stroke="var(--amber)"
             strokeWidth={2}
             fill="url(#actualFill)"
             connectNulls
@@ -92,7 +100,7 @@ export default function DegradationChart({ history = [], forecast = [] }) {
           <Area
             type="monotone"
             dataKey="projected"
-            stroke="var(--violet)"
+            stroke="var(--cyan)"
             strokeWidth={2}
             strokeDasharray="5 4"
             fill="url(#projectedFill)"
@@ -100,9 +108,9 @@ export default function DegradationChart({ history = [], forecast = [] }) {
           />
         </AreaChart>
       </ResponsiveContainer>
-      <div style={{ display: "flex", gap: 16, marginTop: 4, justifyContent: "center" }}>
-        <Legend swatch="var(--gold)" label="Recorded" />
-        <Legend swatch="var(--violet)" label="Forecast" dashed />
+      <div style={{ display: "flex", gap: 16, marginTop: 6, justifyContent: "center" }}>
+        <Legend swatch="var(--amber)" label="Recorded" />
+        <Legend swatch="var(--cyan)" label="Forecast" dashed />
       </div>
     </div>
   );
@@ -121,7 +129,7 @@ function Legend({ swatch, label, dashed }) {
           display: "inline-block",
         }}
       />
-      <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-low)" }}>
+      <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--ink-dim)" }}>
         {label}
       </span>
     </div>
