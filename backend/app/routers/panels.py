@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.db.mongo import panels_collection, inspections_collection
 from app.db.schemas import PanelCreate, PanelOut
-from app.routers.auth import get_current_user
+from app.deps import get_owner
 
 router = APIRouter(prefix="/panels", tags=["panels"])
 
@@ -52,13 +52,13 @@ def _with_latest(panel: dict, latest: dict) -> dict:
 
 
 @router.post("", response_model=PanelOut, status_code=status.HTTP_201_CREATED)
-async def create_panel(payload: PanelCreate, current_user: dict = Depends(get_current_user)):
+async def create_panel(payload: PanelCreate, owner: dict = Depends(get_owner)):
     existing = await panels_collection.find_one({"panel_id": payload.panel_id})
     if existing:
         raise HTTPException(status_code=400, detail="A panel with this panel_id already exists")
 
     doc = payload.model_dump()
-    doc["owner_email"] = current_user["email"]
+    doc["owner_email"] = owner["email"]
     doc["created_at"] = datetime.utcnow()
     result = await panels_collection.insert_one(doc)
     doc["_id"] = result.inserted_id
@@ -66,31 +66,31 @@ async def create_panel(payload: PanelCreate, current_user: dict = Depends(get_cu
 
 
 @router.get("", response_model=List[PanelOut])
-async def list_panels(current_user: dict = Depends(get_current_user)):
-    cursor = panels_collection.find({"owner_email": current_user["email"]}).sort("panel_id", 1)
+async def list_panels(owner: dict = Depends(get_owner)):
+    cursor = panels_collection.find({"owner_email": owner["email"]}).sort("panel_id", 1)
     panels = [_serialize_panel(doc) async for doc in cursor]
     latest = await _latest_by_panel([p["panel_id"] for p in panels])
     return [_with_latest(p, latest.get(p["panel_id"])) for p in panels]
 
 
 @router.get("/{panel_id}", response_model=PanelOut)
-async def get_panel(panel_id: str, current_user: dict = Depends(get_current_user)):
-    panel = _serialize_panel(await _owned_panel(panel_id, current_user))
+async def get_panel(panel_id: str, owner: dict = Depends(get_owner)):
+    panel = _serialize_panel(await _owned_panel(panel_id, owner))
     latest = await _latest_by_panel([panel_id])
     return _with_latest(panel, latest.get(panel_id))
 
 
 @router.delete("/{panel_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_panel(panel_id: str, current_user: dict = Depends(get_current_user)):
-    await _owned_panel(panel_id, current_user)
+async def delete_panel(panel_id: str, owner: dict = Depends(get_owner)):
+    await _owned_panel(panel_id, owner)
     await inspections_collection.delete_many({"panel_id": panel_id})
     await panels_collection.delete_one({"panel_id": panel_id})
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{panel_id}/history")
-async def get_panel_history(panel_id: str, current_user: dict = Depends(get_current_user)):
-    await _owned_panel(panel_id, current_user)
+async def get_panel_history(panel_id: str, owner: dict = Depends(get_owner)):
+    await _owned_panel(panel_id, owner)
     cursor = inspections_collection.find({"panel_id": panel_id, **ANALYZED}).sort("created_at", 1)
     return [{
         "id": str(doc["_id"]),
@@ -106,8 +106,8 @@ async def get_panel_history(panel_id: str, current_user: dict = Depends(get_curr
 
 
 @router.get("/{panel_id}/prediction")
-async def get_panel_prediction(panel_id: str, current_user: dict = Depends(get_current_user)):
-    await _owned_panel(panel_id, current_user)
+async def get_panel_prediction(panel_id: str, owner: dict = Depends(get_owner)):
+    await _owned_panel(panel_id, owner)
     latest = await inspections_collection.find_one(
         {"panel_id": panel_id, **ANALYZED}, sort=[("created_at", -1)]
     )

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.concurrency import run_in_threadpool
 
 from app.db.mongo import panels_collection, inspections_collection
-from app.routers.auth import get_current_user
+from app.deps import get_owner
 from app.services.prediction_service import prediction_service, InvalidImageError
 
 router = APIRouter(tags=["inspections"])
@@ -49,17 +49,17 @@ async def upload_inspection(
     current: float = Form(...),
     temperature: float = Form(...),
     image: Optional[UploadFile] = File(None),
-    current_user: dict = Depends(get_current_user),
+    owner: dict = Depends(get_owner),
 ):
     """Stores a raw inspection record without running the models.
     Use /predict-defect to upload and analyze in one step."""
     _check_readings(voltage, current, temperature)
-    panel = await _owned_panel(panel_id, current_user)
+    panel = await _owned_panel(panel_id, owner)
     image_bytes = await _read_image(image)
 
     doc = {
         "panel_id": panel_id,
-        "owner_email": current_user["email"],
+        "owner_email": owner["email"],
         "created_at": datetime.utcnow(),
         "voltage": voltage,
         "current": current,
@@ -79,11 +79,11 @@ async def predict_defect(
     current: float = Form(...),
     temperature: float = Form(...),
     image: Optional[UploadFile] = File(None),
-    current_user: dict = Depends(get_current_user),
+    owner: dict = Depends(get_owner),
 ):
     """Runs the full CNN -> MLP -> Bi-LSTM pipeline and persists the result."""
     _check_readings(voltage, current, temperature)
-    panel = await _owned_panel(panel_id, current_user)
+    panel = await _owned_panel(panel_id, owner)
     image_bytes = await _read_image(image)
 
     # This panel's health history (oldest first) feeds the forecast
@@ -109,7 +109,7 @@ async def predict_defect(
 
     inspection_doc = {
         "panel_id": panel_id,
-        "owner_email": current_user["email"],
+        "owner_email": owner["email"],
         "created_at": datetime.utcnow(),
         "voltage": voltage,
         "current": current,

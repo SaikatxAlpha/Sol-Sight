@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getPanel, getPanelHistory, getPanelPrediction, deletePanel, clearToken } from "../../api/client.js";
+import { getPanel, getPanelHistory, getPanelPrediction, deletePanel } from "../../api/client.js";
 import HealthGauge from "../components/HealthGauge.jsx";
 import DegradationChart from "../components/DegradationChart.jsx";
 import UploadForm from "../components/UploadForm.jsx";
@@ -45,11 +45,6 @@ export default function PanelDetail() {
     refresh();
   }
 
-  function handleLogout() {
-    clearToken();
-    navigate("/login");
-  }
-
   async function handleDelete() {
     if (!window.confirm(`Remove ${panelId} and all of its inspections? This can't be undone.`)) return;
     try {
@@ -63,7 +58,7 @@ export default function PanelDetail() {
   if (error) {
     return (
       <div className="app-shell">
-        <NavBar onLogout={handleLogout} />
+        <NavBar />
         <div className="container" style={{ padding: "60px 24px" }}>
           <div className="field-error" style={{ marginBottom: 16 }}>{error}</div>
           <button className="btn btn-line" onClick={() => navigate("/")}>
@@ -77,7 +72,7 @@ export default function PanelDetail() {
   if (!panel) {
     return (
       <div className="app-shell">
-        <NavBar onLogout={handleLogout} />
+        <NavBar />
         <div style={{ padding: 40, color: "var(--ink-dim)", fontFamily: "var(--font-mono)" }}>loading panel…</div>
       </div>
     );
@@ -85,7 +80,7 @@ export default function PanelDetail() {
 
   return (
     <div className="app-shell">
-      <NavBar onLogout={handleLogout} />
+      <NavBar />
 
       <div className="container" style={{ padding: "28px 24px 64px" }}>
         <button className="btn btn-ghost" onClick={() => navigate("/")} style={{ marginBottom: 18, paddingLeft: 0 }}>

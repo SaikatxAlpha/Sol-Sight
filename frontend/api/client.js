@@ -1,12 +1,9 @@
 const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-const TOKEN_KEY = "solsight_token";
 
 // ---------- DEMO MODE ----------
 // VITE_DEMO_MODE=true serves canned data with no backend at all (useful for
 // a UI walkthrough offline). Leave it unset to talk to the real API.
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
-
-const DEMO_USER = { name: "Demo Admin", email: "demo@solsight.com" };
 
 const DEMO_PANELS = [
   {
@@ -62,24 +59,8 @@ function delay(ms = 350) {
 }
 // ---------- END DEMO MODE DATA ----------
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
-
-async function request(path, { method = "GET", body, form, auth = true } = {}) {
+async function request(path, { method = "GET", body, form } = {}) {
   const headers = {};
-  if (auth) {
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-  }
 
   let payload = body;
   if (form) {
@@ -90,13 +71,6 @@ async function request(path, { method = "GET", body, form, auth = true } = {}) {
   }
 
   const res = await fetch(`${BASE_URL}${path}`, { method, headers, body: payload });
-
-  if (res.status === 401 && auth) {
-    // Token expired or the user was removed: start over at the login screen.
-    clearToken();
-    window.location.assign("/login");
-    throw new Error("Session expired, please sign in again.");
-  }
 
   if (!res.ok) {
     let detail = res.statusText;
@@ -113,31 +87,6 @@ async function request(path, { method = "GET", body, form, auth = true } = {}) {
   if (res.status === 204) return null;
   return res.json();
 }
-
-// ---------- auth ----------
-export const login = async (email, password) => {
-  if (DEMO_MODE) {
-    await delay();
-    return { access_token: "demo-token", token_type: "bearer" };
-  }
-  return request("/auth/login", { method: "POST", body: { email, password }, auth: false });
-};
-
-export const register = async (name, email, password) => {
-  if (DEMO_MODE) {
-    await delay();
-    return { access_token: "demo-token", token_type: "bearer" };
-  }
-  return request("/auth/register", { method: "POST", body: { name, email, password }, auth: false });
-};
-
-export const me = async () => {
-  if (DEMO_MODE) {
-    await delay(150);
-    return DEMO_USER;
-  }
-  return request("/auth/me");
-};
 
 // ---------- panels ----------
 export const listPanels = async () => {

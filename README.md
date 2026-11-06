@@ -21,7 +21,7 @@ The physics side assumes readings near peak sun, a temperature coefficient of âˆ
 
 ## Stack
 
-- **Backend:** FastAPI, Motor (MongoDB), PyTorch, JWT auth with bcrypt
+- **Backend:** FastAPI, Motor (MongoDB), PyTorch
 - **Frontend:** React 18, Vite, React Router, Recharts
 - **Database:** MongoDB (Atlas or local), or an in-memory mock for demos
 
@@ -43,16 +43,11 @@ Create `backend/.env`:
 ```env
 MONGO_URI=memory               # or mongodb+srv://user:pass@cluster/
 MONGO_DB=solsight
-JWT_SECRET=some-long-random-string
 ```
 
-With `MONGO_URI=memory`, the API starts with a demo account (`admin@solsight.com` / `admin123`) and four sample panels with ten weeks of history. Nothing is saved between restarts.
+With `MONGO_URI=memory`, the API starts with four sample panels and ten weeks of history. Nothing is saved between restarts.
 
-With a real MongoDB, create the admin account once:
-
-```bash
-python seed_admin.py
-```
+There's no login: the app opens straight on the dashboard and everyone using it shares one workspace.
 
 Start the API:
 
@@ -89,9 +84,6 @@ Then run the frontend with `npm run dev` as above.
 
 | Method | Path | What it does |
 |---|---|---|
-| POST | `/auth/register` | Create an account, returns a JWT |
-| POST | `/auth/login` | Log in, returns a JWT |
-| GET | `/auth/me` | Current user |
 | GET | `/panels` | Your panels with their latest status |
 | POST | `/panels` | Add a panel |
 | GET | `/panels/{id}` | One panel |
@@ -120,7 +112,7 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-The tests run against the in-memory database. They cover auth, panel ownership, the full inspection flow, upload validation, and the diagnostics logic.
+The tests run against the in-memory database. They cover the full inspection flow, upload validation, panel management, and the diagnostics logic.
 
 ## Project layout
 
@@ -129,7 +121,8 @@ backend/
   app/
     main.py                  FastAPI app, CORS, startup
     db/                      Mongo connection + Pydantic schemas
-    routers/                 auth, panels, inspections
+    routers/                 panels, inspections
+    deps.py                  shared-workspace owner (no login)
     services/
       prediction_service.py  runs the 3-stage pipeline
       diagnostics.py         physics/rule-based fallback + recommendations
@@ -140,6 +133,6 @@ backend/
   tests/
 frontend/
   api/client.js              API calls (+ offline demo mode)
-  src/pages/                 Login, Dashboard, PanelDetail
+  src/pages/                 Dashboard, PanelDetail
   src/components/            gauge, chart, upload form, cards
 ```

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { listPanels, createPanel, clearToken, me } from "../../api/client.js";
+import { listPanels, createPanel } from "../../api/client.js";
 import PanelCard from "../components/PanelCard.jsx";
 import NavBar from "../components/NavBar.jsx";
 import Modal from "../components/Modal.jsx";
@@ -10,8 +9,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [user, setUser] = useState(null);
-  const navigate = useNavigate();
 
   async function refresh() {
     try {
@@ -26,19 +23,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     refresh();
-    me().then(setUser).catch(() => {});
   }, []);
-
-  function handleLogout() {
-    clearToken();
-    navigate("/login");
-  }
 
   const summary = summarize(panels);
 
   return (
     <div className="app-shell">
-      <NavBar user={user} onLogout={handleLogout} />
+      <NavBar />
 
       <div className="container" style={{ padding: "36px 24px 64px" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 30, gap: 16, flexWrap: "wrap" }}>

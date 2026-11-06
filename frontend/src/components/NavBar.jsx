@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
-export default function NavBar({ user, onLogout, right }) {
+export default function NavBar({ right }) {
   const navigate = useNavigate();
   return (
     <div className="topbar">
@@ -17,15 +17,7 @@ export default function NavBar({ user, onLogout, right }) {
             SolSight
           </span>
         </div>
-        <div className="topbar-actions">
-          {right}
-          {user && <span className="topbar-user">{user.name}</span>}
-          {onLogout && (
-            <button className="btn btn-ghost" onClick={onLogout}>
-              Log out
-            </button>
-          )}
-        </div>
+        <div className="topbar-actions">{right}</div>
       </div>
     </div>
   );
