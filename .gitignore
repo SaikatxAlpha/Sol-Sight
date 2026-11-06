@@ -16,3 +16,7 @@ backend/.env
 # local tooling
 .claude/worktrees/
 .DS_Store
+
+# training data (downloaded, not committed)
+backend/ml_training/data/
+.claude

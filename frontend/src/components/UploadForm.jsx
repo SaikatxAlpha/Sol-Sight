@@ -93,7 +93,7 @@ export default function UploadForm({ panelId, onResult }) {
       </div>
 
       <div className="field">
-        <label className="field-label">Panel image (optional — thermal or visual)</label>
+        <label className="field-label">Panel image (optional — EL image for crack detection, or thermal)</label>
         <div
           onClick={() => fileRef.current?.click()}
           style={{

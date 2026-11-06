@@ -111,6 +111,24 @@ def estimate_defect(pr: float, temperature: float, hotspot_score: float = 0.0
     return label, probs[label], probs
 
 
+def merge_defect_probs(cnn_probs: Dict[str, float], rule_probs: Dict[str, float]
+                       ) -> Tuple[str, float, Dict[str, float]]:
+    """
+    Combine a CNN trained on only some classes with the rule-based estimate.
+    The CNN decides the defects it was trained on (e.g. Crack from ELPV). Its
+    "Normal" only means "none of those", so that probability is shared out
+    over the remaining classes in proportion to the rule-based odds.
+    """
+    known = [c for c in cnn_probs if c != "Normal"]
+    rest = [c for c in DEFECT_CLASSES if c not in known]
+    leftover = cnn_probs.get("Normal", 1 - sum(cnn_probs[c] for c in known))
+    rule_mass = sum(rule_probs[c] for c in rest) or 1.0
+    probs = {c: cnn_probs[c] for c in known}
+    probs.update({c: leftover * rule_probs[c] / rule_mass for c in rest})
+    label = max(probs, key=probs.get)
+    return label, probs[label], probs
+
+
 # ---------- health ----------
 def health_score(pr: float, temperature: float, defect: str, defect_conf: float) -> float:
     score = min(pr, 1.0) * 100

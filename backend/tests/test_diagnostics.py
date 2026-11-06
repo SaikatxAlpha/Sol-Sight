@@ -58,6 +58,18 @@ def test_probabilities_sum_to_one():
     assert set(probs) == set(dx.DEFECT_CLASSES)
 
 
+def test_crack_only_cnn_merges_with_rules():
+    rules = {"Normal": 0.2, "Crack": 0.1, "Hotspot": 0.6, "Soiling": 0.1}
+    # CNN is confident there's a crack: it wins regardless of the rules
+    label, conf, probs = dx.merge_defect_probs({"Crack": 0.9, "Normal": 0.1}, rules)
+    assert label == "Crack" and conf == 0.9
+    assert abs(sum(probs.values()) - 1) < 1e-9
+    # CNN sees no crack: the rules pick between Normal / Hotspot / Soiling
+    label, _, probs = dx.merge_defect_probs({"Crack": 0.05, "Normal": 0.95}, rules)
+    assert label == "Hotspot"
+    assert abs(sum(probs.values()) - 1) < 1e-9
+
+
 def test_forecast_uses_observed_trend():
     start = datetime(2026, 1, 1)
     history = [(start + timedelta(days=7 * k), 95 - 2 * k) for k in range(6)]

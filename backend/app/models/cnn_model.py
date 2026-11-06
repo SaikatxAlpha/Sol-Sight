@@ -5,7 +5,9 @@ Architecture: a lightweight CNN head bolted onto a torchvision ResNet18
 backbone (pretrained on ImageNet). Only the head is trained on the solar
 panel dataset, which keeps training fast and works well on a small dataset.
 
-Classes: Normal, Crack, Hotspot, Soiling
+Classes: Normal, Crack, Hotspot, Soiling -- or any subset of them. A model
+trained on fewer classes (e.g. Normal/Crack from ELPV) carries its class
+list in the checkpoint and is built with `classes=` to match.
 """
 import torch
 import torch.nn as nn
@@ -15,8 +17,11 @@ DEFECT_CLASSES = ["Normal", "Crack", "Hotspot", "Soiling"]
 
 
 class DefectCNN(nn.Module):
-    def __init__(self, num_classes: int = len(DEFECT_CLASSES), pretrained: bool = True, feature_dim: int = 128):
+    def __init__(self, num_classes: int = len(DEFECT_CLASSES), pretrained: bool = True, feature_dim: int = 128,
+                 classes=None):
         super().__init__()
+        self.classes = list(classes) if classes else DEFECT_CLASSES[:num_classes]
+        num_classes = len(self.classes)
         backbone = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None)
         # Strip the final FC layer, keep everything else as a feature extractor
         self.backbone = nn.Sequential(*list(backbone.children())[:-1])  # -> (B, 512, 1, 1)
@@ -43,8 +48,8 @@ class DefectCNN(nn.Module):
         logits, feats = self.forward(x, return_features=True)
         probs = torch.softmax(logits, dim=1)[0]
         idx = int(torch.argmax(probs).item())
-        prob_dict = {cls: float(probs[i]) for i, cls in enumerate(DEFECT_CLASSES)}
-        return DEFECT_CLASSES[idx], float(probs[idx]), prob_dict, feats[0]
+        prob_dict = {cls: float(probs[i]) for i, cls in enumerate(self.classes)}
+        return self.classes[idx], float(probs[idx]), prob_dict, feats[0]
 
 
 IMAGE_SIZE = 224

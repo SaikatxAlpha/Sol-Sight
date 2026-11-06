@@ -1,0 +1,41 @@
+{
+  "dataset": "ELPV (electroluminescence solar cells), held-out test split",
+  "classes": [
+    "Crack",
+    "Normal"
+  ],
+  "confusion_matrix": {
+    "rows_actual_cols_predicted": [
+      [
+        93,
+        32
+      ],
+      [
+        13,
+        260
+      ]
+    ]
+  },
+  "accuracy": 0.887,
+  "per_class": {
+    "Crack": {
+      "precision": 0.877,
+      "recall": 0.744,
+      "f1": 0.805,
+      "support": 125
+    },
+    "Normal": {
+      "precision": 0.89,
+      "recall": 0.952,
+      "f1": 0.92,
+      "support": 273
+    }
+  },
+  "test_images": 398,
+  "training": {
+    "epoch": 7,
+    "val_loss": 0.3347,
+    "val_acc": 0.8389,
+    "dataset": "elpv"
+  }
+}

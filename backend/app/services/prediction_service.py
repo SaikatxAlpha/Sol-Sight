@@ -55,11 +55,11 @@ class PredictionService:
 
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.cnn = DefectCNN(pretrained=False).to(self.device)
         self.mlp = HealthMLP().to(self.device)
         self.bilstm = DegradationBiLSTM().to(self.device)
+        self.cnn, cnn_ok = self._load_cnn()
         self.trained = {
-            "cnn": self._load("cnn_best.pt", self.cnn),
+            "cnn": cnn_ok,
             "mlp": self._load("mlp_best.pt", self.mlp),
             "bilstm": self._load("bilstm_best.pt", self.bilstm),
         }
@@ -67,19 +67,39 @@ class PredictionService:
         self.mlp.eval()
         self.bilstm.eval()
 
-    def _load(self, name: str, model: torch.nn.Module) -> bool:
+    def _read(self, name: str):
         path = os.path.join(MODEL_DIR, name)
         if not (os.path.exists(path) and os.path.getsize(path) > 0):
             log.warning("%s not found or empty; using rule-based fallback for this stage", name)
-            return False
+            return None
+        return torch.load(path, map_location=self.device, weights_only=True)
+
+    def _load(self, name: str, model: torch.nn.Module) -> bool:
         try:
-            state = torch.load(path, map_location=self.device, weights_only=True)
-            model.load_state_dict(state)
+            state = self._read(name)
+            if state is None:
+                return False
+            model.load_state_dict(state.get("state_dict", state))
             log.info("loaded %s", name)
             return True
         except Exception as e:
             log.warning("could not load %s (%s); using rule-based fallback", name, e)
             return False
+
+    def _load_cnn(self) -> Tuple[DefectCNN, bool]:
+        """Checkpoints from train_cnn.py carry their class list (e.g. ['Crack', 'Normal']
+        for ELPV); older plain state dicts are assumed to cover all four classes."""
+        try:
+            ckpt = self._read("cnn_best.pt")
+            if ckpt is not None:
+                classes = ckpt.get("classes") if "state_dict" in ckpt else None
+                cnn = DefectCNN(pretrained=False, classes=classes).to(self.device)
+                cnn.load_state_dict(ckpt.get("state_dict", ckpt))
+                log.info("loaded cnn_best.pt (classes: %s)", cnn.classes)
+                return cnn, True
+        except Exception as e:
+            log.warning("could not load cnn_best.pt (%s); using rule-based fallback", e)
+        return DefectCNN(pretrained=False).to(self.device), False
 
     @staticmethod
     def _decode_image(image_bytes: bytes) -> Image.Image:
@@ -117,12 +137,17 @@ class PredictionService:
         if img is not None and (self.trained["cnn"] or self.trained["mlp"]):
             x = _transform(img).unsqueeze(0).to(self.device)
             cnn_label, cnn_conf, cnn_probs, cnn_features = self.cnn.predict(x)
+        hot = dx.image_hotspot_score(img) if img is not None else 0.0
+        rule_label, rule_conf, rule_probs = dx.estimate_defect(pr, temperature, hot)
         if img is not None and self.trained["cnn"]:
-            defect_label, defect_conf, defect_probs = cnn_label, cnn_conf, cnn_probs
-            mode["defect"] = "cnn"
+            if set(self.cnn.classes) == set(dx.DEFECT_CLASSES):
+                defect_label, defect_conf, defect_probs = cnn_label, cnn_conf, cnn_probs
+                mode["defect"] = "cnn"
+            else:
+                defect_label, defect_conf, defect_probs = dx.merge_defect_probs(cnn_probs, rule_probs)
+                mode["defect"] = "cnn+rules"
         else:
-            hot = dx.image_hotspot_score(img) if img is not None else 0.0
-            defect_label, defect_conf, defect_probs = dx.estimate_defect(pr, temperature, hot)
+            defect_label, defect_conf, defect_probs = rule_label, rule_conf, rule_probs
             mode["defect"] = "rule-based"
 
         # --- 2. Health classification ---
