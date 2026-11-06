@@ -2,9 +2,9 @@ const BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const TOKEN_KEY = "solsight_token";
 
 // ---------- DEMO MODE ----------
-// Set this to false once your backend + MongoDB are actually running
-// and you want real login/API calls again.
-const DEMO_MODE = true;
+// VITE_DEMO_MODE=true serves canned data with no backend at all (useful for
+// a UI walkthrough offline). Leave it unset to talk to the real API.
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 const DEMO_USER = { name: "Demo Admin", email: "demo@solsight.com" };
 
@@ -91,11 +91,19 @@ async function request(path, { method = "GET", body, form, auth = true } = {}) {
 
   const res = await fetch(`${BASE_URL}${path}`, { method, headers, body: payload });
 
+  if (res.status === 401 && auth) {
+    // Token expired or the user was removed: start over at the login screen.
+    clearToken();
+    window.location.assign("/login");
+    throw new Error("Session expired, please sign in again.");
+  }
+
   if (!res.ok) {
     let detail = res.statusText;
     try {
       const err = await res.json();
-      detail = err.detail || detail;
+      // FastAPI validation errors come back as a list of {loc, msg}
+      detail = Array.isArray(err.detail) ? err.detail.map((d) => d.msg).join("; ") : err.detail || detail;
     } catch (_) {
       /* no-op */
     }
@@ -173,6 +181,16 @@ export const getPanel = async (panelId) => {
   return request(`/panels/${panelId}`);
 };
 
+export const deletePanel = async (panelId) => {
+  if (DEMO_MODE) {
+    await delay();
+    const i = DEMO_PANELS.findIndex((p) => p.panel_id === panelId);
+    if (i >= 0) DEMO_PANELS.splice(i, 1);
+    return null;
+  }
+  return request(`/panels/${panelId}`, { method: "DELETE" });
+};
+
 export const getPanelHistory = async (panelId) => {
   if (DEMO_MODE) {
     await delay();
@@ -217,9 +235,12 @@ export async function predictDefect({ panelId, voltage, current, temperature, im
       health_score: 71.5,
       health_probabilities: { Healthy: 22.0, Warning: 71.5, Critical: 6.5 },
       power_output: Math.round(power * 100) / 100,
+      expected_power: 368.0,
+      performance_ratio: 0.938,
       power_loss_pct: 6.2,
       degradation_forecast: DEMO_PREDICTION.degradation_forecast,
       recommendation: "Panel shows early warning signs. Monitor closely and plan a routine inspection.",
+      analysis_mode: { defect: "rule-based", health: "rule-based", forecast: "trend" },
     };
   }
   const form = new FormData();

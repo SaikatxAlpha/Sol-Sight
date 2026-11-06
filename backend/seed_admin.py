@@ -2,8 +2,8 @@
 Seed (or reset) a permanent admin account in SolSight's MongoDB so you
 don't have to register a new user every time you wipe the database.
 
-Place this file at: backend/seed_admin.py
-Run it from the backend/ directory (with your venv activated):
+Run it from the backend/ directory (with your venv activated). It reads
+MONGO_URI / MONGO_DB from backend/.env, same as the API:
 
     python seed_admin.py
 
@@ -22,8 +22,11 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(__file__))
 
+import bcrypt
+from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
-from passlib.context import CryptContext
+
+load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("MONGO_DB", "solsight")
@@ -32,15 +35,16 @@ ADMIN_NAME = "Admin"
 ADMIN_EMAIL = "admin@solsight.com"
 ADMIN_PASSWORD = "admin123"
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 async def seed_admin():
-    client = AsyncIOMotorClient(MONGO_URI)
+    if MONGO_URI.strip().lower() in ("memory", "mongomock://"):
+        print("MONGO_URI=memory: the API seeds this account itself on startup, nothing to do.")
+        return
+    client = AsyncIOMotorClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client[DB_NAME]
     users_collection = db["users"]
 
-    hashed = pwd_context.hash(ADMIN_PASSWORD)
+    hashed = bcrypt.hashpw(ADMIN_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     existing = await users_collection.find_one({"email": ADMIN_EMAIL})
     if existing:

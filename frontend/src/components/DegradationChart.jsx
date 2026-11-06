@@ -49,18 +49,18 @@ export default function DegradationChart({ history = [], forecast = [] }) {
     projected: f.predicted_health,
   }));
 
-  const bridge =
-    historyPoints.length > 0
-      ? [{ ...historyPoints[historyPoints.length - 1], projected: historyPoints[historyPoints.length - 1].actual }]
-      : [];
+  // The forecast line starts from the last recorded point, so give that
+  // point a projected value too (instead of a duplicate "today" entry).
+  const last = historyPoints[historyPoints.length - 1];
+  if (last) last.projected = last.actual;
 
-  const data = [...historyPoints, ...bridge, ...forecastPoints];
-  const todayLabel = bridge[0]?.label;
+  const data = [...historyPoints, ...forecastPoints];
+  const todayLabel = last?.label;
 
   return (
     <div style={{ width: "100%", height: 220 }}>
       <ResponsiveContainer>
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 8, right: 12, left: -6, bottom: 0 }}>
           <defs>
             <linearGradient id="actualFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--amber)" stopOpacity={0.35} />
@@ -77,6 +77,8 @@ export default function DegradationChart({ history = [], forecast = [] }) {
             tick={{ fill: "var(--ink-dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}
             axisLine={{ stroke: "var(--hairline)" }}
             tickLine={false}
+            interval="preserveStartEnd"
+            minTickGap={18}
           />
           <YAxis
             domain={[0, 100]}

@@ -41,12 +41,17 @@ def build_sequences(csv_path: str):
         for i in range(WINDOW, len(scores)):
             window = scores[i - WINDOW:i]
             base_date = dates[i - 1]
+            # Skip windows whose longest horizon runs past the end of the
+            # data -- clamping to the last point would teach "no decline".
+            if base_date + np.timedelta64(FORECAST_HORIZONS_DAYS[-1], "D") > dates[-1]:
+                break
             targets = []
             for horizon in FORECAST_HORIZONS_DAYS:
                 target_date = base_date + np.timedelta64(horizon, "D")
                 future_idx = np.searchsorted(dates, target_date)
-                future_idx = min(future_idx, len(scores) - 1)
-                targets.append(scores[future_idx])
+                # Same target the model is read with at inference time:
+                # fractional decline from the last observed score.
+                targets.append((window[-1] - scores[future_idx]) / 100.0)
             X.append(window)
             Y.append(targets)
     return np.array(X, dtype=np.float32), np.array(Y, dtype=np.float32)
@@ -76,7 +81,7 @@ def train(csv_path: str, epochs: int, lr: float, out_path: str, batch_size: int 
         for xb, yb in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
-            preds = model(xb)  # raw deltas; train to directly regress health for simplicity
+            preds = model(xb)  # fractional decline per horizon
             loss = criterion(preds, yb)
             loss.backward()
             optimizer.step()

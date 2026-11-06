@@ -37,7 +37,9 @@ export default function HealthGauge({ score = 0, status = "Healthy", size = 168,
     >
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
         <defs>
-          <linearGradient id={`grad-${uid}`} x1="0" y1="0" x2="1" y2="0">
+          {/* userSpaceOnUse: a horizontal line has a zero-height bounding box,
+              so the default objectBoundingBox gradient wouldn't paint at all */}
+          <linearGradient id={`grad-${uid}`} gradientUnits="userSpaceOnUse" x1={trackX0} y1="0" x2={trackX1} y2="0">
             <stop offset="0%" stopColor="var(--bad)" />
             <stop offset="45%" stopColor="var(--warn)" />
             <stop offset="100%" stopColor="var(--ok)" />

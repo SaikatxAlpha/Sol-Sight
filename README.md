@@ -1,518 +1,145 @@
-# Sol-Sight
+# SolSight
 
-Sol-Sight is an intelligent solar panel inspection and monitoring platform designed to help identify solar panel issues, manage inspections, and provide actionable insights through a web-based application.
+Solar panel inspection and health monitoring. Log a panel's electrical readings (and optionally a thermal or visual image), and SolSight works out whether something is wrong with it, how healthy it is, and where its health is heading over the next 90 days.
 
-The project is structured into a backend API and a frontend application, with Docker support for simplified deployment.
-
-## Project Structure
-
-```text
-SolSight/
-├── backend/
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── routers/
-│   │   └── ...
-│   ├── requirements.txt
-│   └── ...
-│
-├── frontend/
-│   ├── src/
-│   ├── package.json
-│   └── ...
-│
-├── docker-compose.yml
-├── README.md
-└── ...
+```
+readings + image ──► defect detection ──► health score ──► 30/60/90-day forecast ──► recommendation
+                     (CNN / rules)        (MLP / rules)    (Bi-LSTM / trend)
 ```
 
-## Technology Stack
+## How the analysis works
+
+Every inspection goes through three stages. Each stage uses its neural network **only if trained weights exist in `backend/saved_models/`**; otherwise it falls back to a physics-based method. The API response says which path was used (`analysis_mode`), so an estimate is never presented as a model output.
+
+| Stage | Model | Fallback when no trained weights |
+|---|---|---|
+| Defect (Normal / Crack / Hotspot / Soiling) | ResNet18-based CNN | Performance ratio + cell temperature + thermal-contrast check on the image |
+| Health (Healthy / Warning / Critical, 0–100 score) | MLP on CNN features + readings | Temperature-corrected performance ratio, minus thermal and defect penalties |
+| Forecast (30 / 60 / 90 days) | Bi-LSTM on health history | Least-squares trend over real inspection dates; sudden drops treated as events, not trends |
+
+The physics side assumes readings near peak sun, a temperature coefficient of −0.40 %/°C above 25 °C, and ~0.7 %/year normal ageing. Status bands: Healthy ≥ 75, Warning 50–75, Critical < 50.
+
+## Stack
+
+- **Backend:** FastAPI, Motor (MongoDB), PyTorch, JWT auth with bcrypt
+- **Frontend:** React 18, Vite, React Router, Recharts
+- **Database:** MongoDB (Atlas or local), or an in-memory mock for demos
+
+## Running it locally
+
+You need Python 3.11, Node 18+, and either a MongoDB connection string or nothing at all (in-memory mode).
 
 ### Backend
 
-* Python
-* FastAPI
-* Uvicorn
-* REST API
-* Database integration
-* AI/ML integration for solar panel inspection
-
-### Frontend
-
-* React
-* JavaScript/TypeScript
-* Modern component-based UI
-* REST API integration
-
-### Infrastructure
-
-* Docker
-* Docker Compose
-* Git
-* GitHub
-
-## Prerequisites
-
-Install the following software before starting:
-
-* Git
-* Python 3.10 or later
-* Node.js 18 or later
-* npm
-* Docker Desktop
-
-Verify the installations:
-
-```bash
-git --version
-python --version
-node --version
-npm --version
-docker --version
-docker compose version
-```
-
-## Clone the Repository
-
-Clone the project from GitHub:
-
-```bash
-git clone https://github.com/SaikatxAlpha/Sol-Sight.git
-```
-
-Move into the project directory:
-
-```bash
-cd Sol-Sight
-```
-
-## Backend Setup
-
-Move into the backend directory:
-
 ```bash
 cd backend
-```
-
-Create a Python virtual environment:
-
-### Windows
-
-```powershell
 python -m venv venv
-```
-
-Activate it:
-
-```powershell
-venv\Scripts\activate
-```
-
-### Linux/macOS
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-Install the backend dependencies:
-
-```bash
+venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Environment Variables
-
-Create a `.env` file inside the backend directory if the project requires environment variables.
-
-Example:
+Create `backend/.env`:
 
 ```env
-DATABASE_URL=your_database_url
-SECRET_KEY=your_secret_key
-API_KEY=your_api_key
+MONGO_URI=memory               # or mongodb+srv://user:pass@cluster/
+MONGO_DB=solsight
+JWT_SECRET=some-long-random-string
 ```
 
-Do not commit `.env` files containing passwords, API keys, tokens, or other secrets.
+With `MONGO_URI=memory`, the API starts with a demo account (`admin@solsight.com` / `admin123`) and four sample panels with ten weeks of history. Nothing is saved between restarts.
 
-Add `.env` to `.gitignore`:
+With a real MongoDB, create the admin account once:
 
-```gitignore
-.env
-venv/
-__pycache__/
-*.pyc
+```bash
+python seed_admin.py
 ```
 
-## Start the Backend
-
-From the `backend` directory:
+Start the API:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-The backend will normally be available at:
+- API: http://127.0.0.1:8000
+- Interactive docs: http://127.0.0.1:8000/docs
+- Health check: http://127.0.0.1:8000/health (shows DB status and which models are trained)
 
-```text
-http://127.0.0.1:8000
-```
+### Frontend
 
-FastAPI documentation will be available at:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Alternative ReDoc documentation:
-
-```text
-http://127.0.0.1:8000/redoc
-```
-
-## Frontend Setup
-
-Open a new terminal and return to the project root:
+From the **project root** (that's where `package.json` lives):
 
 ```bash
-cd Sol-Sight
-```
-
-Move into the frontend:
-
-```bash
-cd frontend
-```
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Start the development server:
-
-```bash
-npm run dev
-```
-
-The frontend URL will be displayed in the terminal. Depending on the frontend configuration, it will commonly be:
-
-```text
-http://localhost:5173
-```
-
-## Running Backend and Frontend Together
-
-You need two terminals during local development.
-
-### Terminal 1
-
-```bash
-cd Sol-Sight/backend
-```
-
-Activate the virtual environment if required:
-
-```powershell
-venv\Scripts\activate
-```
-
-Start FastAPI:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-### Terminal 2
-
-```bash
-cd Sol-Sight/frontend
 npm install
 npm run dev
 ```
 
-The frontend communicates with the backend through the configured API URL.
+Open http://localhost:5173. To click through the UI with no backend at all, put `VITE_DEMO_MODE=true` in a root `.env`.
 
-## Docker Setup
+### Docker
 
-Sol-Sight also includes a Docker Compose configuration.
-
-From the project root:
+Starts MongoDB and the API together:
 
 ```bash
 docker compose up --build
 ```
 
-To run the containers in detached mode:
+Then run the frontend with `npm run dev` as above.
+
+## API
+
+| Method | Path | What it does |
+|---|---|---|
+| POST | `/auth/register` | Create an account, returns a JWT |
+| POST | `/auth/login` | Log in, returns a JWT |
+| GET | `/auth/me` | Current user |
+| GET | `/panels` | Your panels with their latest status |
+| POST | `/panels` | Add a panel |
+| GET | `/panels/{id}` | One panel |
+| DELETE | `/panels/{id}` | Remove a panel and its inspections |
+| GET | `/panels/{id}/history` | All analyzed inspections, oldest first |
+| GET | `/panels/{id}/prediction` | Latest forecast and recommendation |
+| POST | `/predict-defect` | Upload readings (+ optional image), run the full analysis, save it |
+| POST | `/upload-inspection` | Save raw readings without analysis |
+
+## Training the models
+
+The training scripts are in `backend/ml_training/`. Each one writes its best checkpoint to `backend/saved_models/`, and the API picks it up on the next restart.
 
 ```bash
-docker compose up --build -d
+cd backend/ml_training
+python train_cnn.py --data-dir data --epochs 20        # data/train/<Class>/*.jpg, data/val/<Class>/*.jpg
+python train_mlp.py --csv data/mlp_features.csv
+python train_bilstm.py --csv data/health_history.csv   # columns: panel_id, date, health_score
 ```
 
-Check running containers:
+## Tests
 
 ```bash
-docker compose ps
+cd backend
+pip install -r requirements-dev.txt
+pytest
 ```
 
-View logs:
+The tests run against the in-memory database. They cover auth, panel ownership, the full inspection flow, upload validation, and the diagnostics logic.
 
-```bash
-docker compose logs
+## Project layout
+
 ```
-
-Stop the application:
-
-```bash
-docker compose down
+backend/
+  app/
+    main.py                  FastAPI app, CORS, startup
+    db/                      Mongo connection + Pydantic schemas
+    routers/                 auth, panels, inspections
+    services/
+      prediction_service.py  runs the 3-stage pipeline
+      diagnostics.py         physics/rule-based fallback + recommendations
+    models/                  CNN, MLP, Bi-LSTM, VAE definitions
+    demo_data.py             sample fleet for in-memory mode
+  ml_training/               training scripts
+  saved_models/              trained weights (.pt)
+  tests/
+frontend/
+  api/client.js              API calls (+ offline demo mode)
+  src/pages/                 Login, Dashboard, PanelDetail
+  src/components/            gauge, chart, upload form, cards
 ```
-
-Rebuild the containers:
-
-```bash
-docker compose build --no-cache
-docker compose up
-```
-
-## API Documentation
-
-Once the backend is running, FastAPI automatically provides interactive API documentation.
-
-Swagger UI:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-ReDoc:
-
-```text
-http://127.0.0.1:8000/redoc
-```
-
-The Swagger interface can be used to test API endpoints directly.
-
-## Development Workflow
-
-After cloning the repository:
-
-```bash
-git clone https://github.com/SaikatxAlpha/Sol-Sight.git
-cd Sol-Sight
-```
-
-Make your changes and test them locally.
-
-Check the changed files:
-
-```bash
-git status
-```
-
-Stage the changes:
-
-```bash
-git add .
-```
-
-Create a commit:
-
-```bash
-git commit -m "Describe your changes"
-```
-
-Push the changes:
-
-```bash
-git push
-```
-
-## Pulling the Latest Changes
-
-Before starting work, update your local repository:
-
-```bash
-git pull origin main
-```
-
-If you have local changes that have not been committed, commit or stash them before pulling.
-
-## Creating a New Branch
-
-For feature development, create a separate branch:
-
-```bash
-git checkout -b feature-name
-```
-
-Example:
-
-```bash
-git checkout -b solar-panel-detection
-```
-
-Push the branch:
-
-```bash
-git push -u origin solar-panel-detection
-```
-
-## Recommended Git Workflow
-
-```bash
-git pull origin main
-git checkout -b feature-name
-
-# Make changes
-
-git status
-git add .
-git commit -m "Implement feature"
-git push -u origin feature-name
-```
-
-After testing, create a Pull Request on GitHub to merge the feature into `main`.
-
-## API and Frontend Configuration
-
-If the frontend requires a backend URL, configure it using the frontend environment configuration.
-
-Example:
-
-```env
-VITE_API_URL=http://127.0.0.1:8000
-```
-
-The exact environment variable depends on the frontend implementation.
-
-Do not hard-code production credentials or private API keys into the source code.
-
-## Common Problems
-
-### Git is not recognized
-
-If Windows reports:
-
-```text
-git is not recognized
-```
-
-Install Git and restart VS Code.
-
-Verify:
-
-```powershell
-git --version
-```
-
-### Python is not recognized
-
-Verify Python:
-
-```powershell
-python --version
-```
-
-If Python is not available, install Python and ensure it is added to the system PATH.
-
-### npm is not recognized
-
-Install Node.js and restart the terminal.
-
-Verify:
-
-```powershell
-node --version
-npm --version
-```
-
-### Backend dependency errors
-
-Activate the virtual environment:
-
-```powershell
-venv\Scripts\activate
-```
-
-Then reinstall dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-### Frontend dependency errors
-
-Delete the existing dependency directory and lock file if necessary:
-
-```bash
-rm -rf node_modules package-lock.json
-npm install
-```
-
-On Windows PowerShell:
-
-```powershell
-Remove-Item -Recurse -Force node_modules
-Remove-Item package-lock.json
-npm install
-```
-
-### Docker problems
-
-Check Docker:
-
-```bash
-docker --version
-docker compose version
-```
-
-Then rebuild:
-
-```bash
-docker compose down
-docker compose build --no-cache
-docker compose up
-```
-
-## Security
-
-Never commit sensitive information to GitHub.
-
-Do not commit:
-
-```text
-.env
-*.key
-*.pem
-credentials.json
-service-account.json
-```
-
-Use environment variables for:
-
-* Database credentials
-* API keys
-* Authentication secrets
-* Cloud credentials
-* Third-party service credentials
-
-## Contribution
-
-1. Fork the repository.
-2. Create a feature branch.
-3. Implement your changes.
-4. Test the backend and frontend.
-5. Commit your changes.
-6. Push your branch.
-7. Create a Pull Request.
-
-## License
-
-Add the appropriate project license here.
-
-## Repository
-
-GitHub:
-
-https://github.com/SaikatxAlpha/Sol-Sight.git

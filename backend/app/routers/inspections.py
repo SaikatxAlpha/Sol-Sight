@@ -1,13 +1,45 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.concurrency import run_in_threadpool
 
 from app.db.mongo import panels_collection, inspections_collection
 from app.routers.auth import get_current_user
-from app.services.prediction_service import prediction_service
+from app.services.prediction_service import prediction_service, InvalidImageError
 
 router = APIRouter(tags=["inspections"])
+
+# Images are stored inline in the inspection document; MongoDB caps a
+# document at 16 MB, so keep well under that.
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+
+async def _owned_panel(panel_id: str, user: dict) -> dict:
+    panel = await panels_collection.find_one({"panel_id": panel_id, "owner_email": user["email"]})
+    if not panel:
+        raise HTTPException(status_code=404, detail="Panel not found")
+    return panel
+
+
+async def _read_image(image: Optional[UploadFile]) -> Optional[bytes]:
+    if image is None or not image.filename:
+        return None
+    if image.content_type and not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files can be attached")
+    data = await image.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image is larger than 5 MB")
+    return data or None
+
+
+def _check_readings(voltage: float, current: float, temperature: float):
+    if not (0 <= voltage <= 100):
+        raise HTTPException(status_code=422, detail="Voltage must be between 0 and 100 V")
+    if not (0 <= current <= 30):
+        raise HTTPException(status_code=422, detail="Current must be between 0 and 30 A")
+    if not (-40 <= temperature <= 120):
+        raise HTTPException(status_code=422, detail="Temperature must be between -40 and 120 °C")
 
 
 @router.post("/upload-inspection")
@@ -19,14 +51,11 @@ async def upload_inspection(
     image: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Accepts an inspection image + operational readings, stores the raw record.
-    Analysis (CNN/MLP/BiLSTM) happens in /predict-defect so the UI can show a
-    separate 'ANALYZE' step, matching the design doc's workflow."""
-    panel = await panels_collection.find_one({"panel_id": panel_id, "owner_email": current_user["email"]})
-    if not panel:
-        raise HTTPException(status_code=404, detail="Panel not found")
-
-    image_bytes = await image.read() if image else None
+    """Stores a raw inspection record without running the models.
+    Use /predict-defect to upload and analyze in one step."""
+    _check_readings(voltage, current, temperature)
+    panel = await _owned_panel(panel_id, current_user)
+    image_bytes = await _read_image(image)
 
     doc = {
         "panel_id": panel_id,
@@ -36,7 +65,7 @@ async def upload_inspection(
         "current": current,
         "temperature": temperature,
         "rated_power": panel["rated_power"],
-        "image_bytes": image_bytes,  # small demo dataset; swap for object storage in production
+        "image_bytes": image_bytes,
         "analyzed": False,
     }
     result = await inspections_collection.insert_one(doc)
@@ -53,26 +82,30 @@ async def predict_defect(
     current_user: dict = Depends(get_current_user),
 ):
     """Runs the full CNN -> MLP -> Bi-LSTM pipeline and persists the result."""
-    panel = await panels_collection.find_one({"panel_id": panel_id, "owner_email": current_user["email"]})
-    if not panel:
-        raise HTTPException(status_code=404, detail="Panel not found")
+    _check_readings(voltage, current, temperature)
+    panel = await _owned_panel(panel_id, current_user)
+    image_bytes = await _read_image(image)
 
-    image_bytes = await image.read() if image else None
-
-    # Pull this panel's health-score history for the Bi-LSTM
+    # This panel's health history (oldest first) feeds the forecast
     history_cursor = inspections_collection.find(
-        {"panel_id": panel_id, "health_score": {"$exists": True}}
+        {"panel_id": panel_id, "analyzed": True},
+        {"created_at": 1, "health_score": 1},
     ).sort("created_at", 1)
-    history: List[float] = [doc["health_score"] async for doc in history_cursor]
+    history = [(doc["created_at"], doc["health_score"]) async for doc in history_cursor]
 
-    result = prediction_service.run_inspection(
-        image_bytes=image_bytes,
-        voltage=voltage,
-        current=current,
-        temperature=temperature,
-        rated_power=panel["rated_power"],
-        history=history,
-    )
+    # Torch inference is CPU-bound; keep it off the event loop
+    try:
+        result = await run_in_threadpool(
+            prediction_service.run_inspection,
+            image_bytes=image_bytes,
+            voltage=voltage,
+            current=current,
+            temperature=temperature,
+            rated_power=panel["rated_power"],
+            history=history,
+        )
+    except InvalidImageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     inspection_doc = {
         "panel_id": panel_id,
@@ -81,16 +114,8 @@ async def predict_defect(
         "voltage": voltage,
         "current": current,
         "temperature": temperature,
-        "power_output": result["power_output"],
-        "power_loss_pct": result["power_loss_pct"],
-        "detected_defect": result["detected_defect"],
-        "confidence": result["confidence"],
-        "defect_probabilities": result["defect_probabilities"],
-        "health_score": result["health_score"],
-        "status": result["status"],
-        "health_probabilities": result["health_probabilities"],
-        "degradation_forecast": result["degradation_forecast"],
-        "recommendation": result["recommendation"],
+        "has_image": image_bytes is not None,
+        **result,
         "analyzed": True,
     }
     inserted = await inspections_collection.insert_one(inspection_doc)

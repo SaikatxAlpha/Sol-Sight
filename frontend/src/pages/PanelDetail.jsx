@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getPanel, getPanelHistory, getPanelPrediction, clearToken } from "../../api/client.js";
+import { getPanel, getPanelHistory, getPanelPrediction, deletePanel, clearToken } from "../../api/client.js";
 import HealthGauge from "../components/HealthGauge.jsx";
 import DegradationChart from "../components/DegradationChart.jsx";
 import UploadForm from "../components/UploadForm.jsx";
@@ -48,6 +48,16 @@ export default function PanelDetail() {
   function handleLogout() {
     clearToken();
     navigate("/login");
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Remove ${panelId} and all of its inspections? This can't be undone.`)) return;
+    try {
+      await deletePanel(panelId);
+      navigate("/");
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   if (error) {
@@ -120,8 +130,16 @@ export default function PanelDetail() {
                   <Metric label="Detected" value={lastResult.detected_defect} />
                   <Metric label="Confidence" value={`${lastResult.confidence}%`} />
                   <Metric label="Power output" value={`${lastResult.power_output} W`} />
+                  <Metric label="Expected at this temp" value={`${lastResult.expected_power} W`} />
                   <Metric label="Power loss" value={`${lastResult.power_loss_pct}%`} />
+                  <Metric label="Health score" value={`${lastResult.health_score}%`} />
                 </div>
+                {lastResult.analysis_mode && (
+                  <div style={{ marginTop: 16, fontSize: 11.5, color: "var(--ink-dim)", fontFamily: "var(--font-mono)" }}>
+                    defect: {lastResult.analysis_mode.defect} · health: {lastResult.analysis_mode.health} · forecast:{" "}
+                    {lastResult.analysis_mode.forecast}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -169,6 +187,12 @@ export default function PanelDetail() {
             )}
           </div>
         </section>
+
+        <div style={{ marginTop: 28, display: "flex", justifyContent: "flex-end" }}>
+          <button className="btn btn-line" onClick={handleDelete} style={{ color: "var(--bad)" }}>
+            Remove panel
+          </button>
+        </div>
       </div>
 
       <style>{`

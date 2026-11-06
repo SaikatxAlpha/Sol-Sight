@@ -17,16 +17,23 @@ Panel
       ├── confidence
       └── health_score
 """
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List, Dict
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # ---------- Auth ----------
 class UserCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=80)
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=6)
+
+    @field_validator("password")
+    @classmethod
+    def password_fits_bcrypt(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 bytes")
+        return v
 
 
 class UserLogin(BaseModel):
@@ -41,16 +48,28 @@ class Token(BaseModel):
 
 # ---------- Panels ----------
 class PanelCreate(BaseModel):
-    panel_id: str
-    location: str
-    installation_date: str
-    rated_power: float = Field(..., description="Rated power in watts")
+    panel_id: str = Field(..., min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_-]+$")
+    location: str = Field(..., min_length=1, max_length=120)
+    installation_date: str = Field(..., description="YYYY-MM-DD")
+    rated_power: float = Field(..., gt=0, le=1000, description="Rated power in watts")
+
+    @field_validator("installation_date")
+    @classmethod
+    def valid_date(cls, v: str) -> str:
+        try:
+            d = date.fromisoformat(v)
+        except ValueError:
+            raise ValueError("installation_date must be YYYY-MM-DD")
+        if d > date.today():
+            raise ValueError("installation_date can't be in the future")
+        return v
 
 
 class PanelOut(PanelCreate):
     id: str
     latest_health_score: Optional[float] = None
     latest_status: Optional[str] = None
+    last_inspected_at: Optional[datetime] = None
     created_at: datetime
 
 
@@ -86,6 +105,8 @@ class InspectionResult(BaseModel):
     current: float
     temperature: float
     power_output: float
+    expected_power: float
+    performance_ratio: float
     power_loss_pct: float
     detected_defect: str
     confidence: float
@@ -93,6 +114,7 @@ class InspectionResult(BaseModel):
     status: str
     degradation_forecast: List[DegradationPoint]
     recommendation: str
+    analysis_mode: Dict[str, str]
 
 
 class InspectionOut(InspectionResult):

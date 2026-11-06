@@ -13,19 +13,29 @@ Orchestrates the full SolSight inference pipeline:
   Bi-LSTM (uses this panel's historical health_scores) ──► 30/60/90 day forecast
         │
         ▼
-  Maintenance recommendation (rule-based on status + forecast slope)
+  Maintenance recommendation (status + defect + forecast)
+
+Each stage only uses its network if trained weights were found in
+saved_models/. Otherwise it falls back to the physics/rule-based logic in
+diagnostics.py, and the response says which path was taken
+(`analysis_mode`) so nobody mistakes an estimate for a model output.
 """
 import io
+import logging
 import os
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Optional, Tuple
 
 import torch
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from torchvision import transforms
 
 from app.models.cnn_model import DefectCNN, IMAGE_SIZE
 from app.models.mlp_model import HealthMLP
 from app.models.bilstm_model import DegradationBiLSTM, FORECAST_HORIZONS_DAYS
+from app.services import diagnostics as dx
+
+log = logging.getLogger("solsight.prediction")
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "saved_models")
 
@@ -36,6 +46,10 @@ _transform = transforms.Compose([
 ])
 
 
+class InvalidImageError(ValueError):
+    pass
+
+
 class PredictionService:
     """Loads all three models once and exposes a single `.run_inspection()` call."""
 
@@ -44,25 +58,40 @@ class PredictionService:
         self.cnn = DefectCNN(pretrained=False).to(self.device)
         self.mlp = HealthMLP().to(self.device)
         self.bilstm = DegradationBiLSTM().to(self.device)
-        self._load_weights_if_available()
+        self.trained = {
+            "cnn": self._load("cnn_best.pt", self.cnn),
+            "mlp": self._load("mlp_best.pt", self.mlp),
+            "bilstm": self._load("bilstm_best.pt", self.bilstm),
+        }
         self.cnn.eval()
         self.mlp.eval()
         self.bilstm.eval()
 
-    def _load_weights_if_available(self):
-        for name, model in [("cnn_best.pt", self.cnn), ("mlp_best.pt", self.mlp), ("bilstm_best.pt", self.bilstm)]:
-            path = os.path.join(MODEL_DIR, name)
-            if os.path.exists(path) and os.path.getsize(path) > 0:
-                try:
-                    state = torch.load(path, map_location=self.device)
-                    model.load_state_dict(state)
-                except Exception as e:
-                    print(f"[PredictionService] Could not load {name}, using randomly-initialized weights: {e}")
-            else:
-                print(f"[PredictionService] {name} not found/empty — using randomly-initialized weights for demo.")
+    def _load(self, name: str, model: torch.nn.Module) -> bool:
+        path = os.path.join(MODEL_DIR, name)
+        if not (os.path.exists(path) and os.path.getsize(path) > 0):
+            log.warning("%s not found or empty; using rule-based fallback for this stage", name)
+            return False
+        try:
+            state = torch.load(path, map_location=self.device, weights_only=True)
+            model.load_state_dict(state)
+            log.info("loaded %s", name)
+            return True
+        except Exception as e:
+            log.warning("could not load %s (%s); using rule-based fallback", name, e)
+            return False
+
+    @staticmethod
+    def _decode_image(image_bytes: bytes) -> Image.Image:
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            img.load()
+            return img.convert("RGB")
+        except (UnidentifiedImageError, OSError) as e:
+            raise InvalidImageError("Uploaded file is not a readable image") from e
 
     def _numeric_feature_vector(self, voltage, current, temperature, rated_power,
-                                 defect_confidence, historical_avg_health) -> torch.Tensor:
+                                defect_confidence, historical_avg_health) -> torch.Tensor:
         power = voltage * current
         efficiency = (power / rated_power) if rated_power else 0.0
         vals = [voltage, current, power, temperature, efficiency, defect_confidence, historical_avg_health]
@@ -75,57 +104,69 @@ class PredictionService:
         current: float,
         temperature: float,
         rated_power: float,
-        history: List[float],
+        history: List[Tuple[datetime, float]],
     ) -> dict:
-        # --- 1. CNN: defect detection ---
-        if image_bytes:
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        else:
-            img = Image.new("RGB", (IMAGE_SIZE, IMAGE_SIZE), color=(128, 128, 128))
-        x = _transform(img).unsqueeze(0).to(self.device)
-        defect_label, defect_conf, defect_probs, cnn_features = self.cnn.predict(x)
-
-        # --- 2. MLP: health classification ---
-        historical_avg = sum(history) / len(history) if history else 90.0
-        numeric_feats = self._numeric_feature_vector(
-            voltage, current, temperature, rated_power, defect_conf, historical_avg
-        )
-        status, health_score, health_probs = self.mlp.predict(cnn_features, numeric_feats)
-
-        # --- 3. Bi-LSTM: degradation forecast ---
-        seq = history + [health_score]
-        forecast = self.bilstm.predict(seq)
-
-        # --- 4. Power loss + recommendation ---
+        img = self._decode_image(image_bytes) if image_bytes else None
         power_output = voltage * current
-        expected_power = rated_power or power_output
-        power_loss_pct = max(0.0, round((1 - power_output / expected_power) * 100, 1)) if expected_power else 0.0
-        recommendation = self._build_recommendation(status, defect_label, forecast)
+        pr = dx.performance_ratio(power_output, rated_power, temperature)
+        past_scores = [s for _, s in history]
+        mode = {}
+
+        # --- 1. Defect detection ---
+        cnn_features = None
+        if img is not None and (self.trained["cnn"] or self.trained["mlp"]):
+            x = _transform(img).unsqueeze(0).to(self.device)
+            cnn_label, cnn_conf, cnn_probs, cnn_features = self.cnn.predict(x)
+        if img is not None and self.trained["cnn"]:
+            defect_label, defect_conf, defect_probs = cnn_label, cnn_conf, cnn_probs
+            mode["defect"] = "cnn"
+        else:
+            hot = dx.image_hotspot_score(img) if img is not None else 0.0
+            defect_label, defect_conf, defect_probs = dx.estimate_defect(pr, temperature, hot)
+            mode["defect"] = "rule-based"
+
+        # --- 2. Health classification ---
+        if self.trained["mlp"] and cnn_features is not None:
+            historical_avg = sum(past_scores) / len(past_scores) if past_scores else 90.0
+            numeric = self._numeric_feature_vector(
+                voltage, current, temperature, rated_power, defect_conf, historical_avg
+            )
+            status, health, health_probs = self.mlp.predict(cnn_features, numeric)
+            mode["health"] = "mlp"
+        else:
+            health = dx.health_score(pr, temperature, defect_label, defect_conf)
+            status = dx.status_for(health)
+            health_probs = dx.status_probabilities(health)
+            mode["health"] = "rule-based"
+
+        # --- 3. Degradation forecast ---
+        if self.trained["bilstm"] and len(past_scores) >= 2:
+            preds = self.bilstm.predict(past_scores + [health])
+            mode["forecast"] = "bilstm"
+        else:
+            preds = dx.trend_forecast(history + [(datetime.utcnow(), health)], health,
+                                      FORECAST_HORIZONS_DAYS)
+            mode["forecast"] = "trend"
+        forecast = [{"day": d, "predicted_health": p} for d, p in zip(FORECAST_HORIZONS_DAYS, preds)]
+
+        # --- 4. Power + recommendation ---
+        recommendation = dx.build_recommendation(status, defect_label, health, forecast)
 
         return {
             "detected_defect": defect_label,
             "confidence": round(defect_conf * 100, 1),
             "defect_probabilities": {k: round(v * 100, 1) for k, v in defect_probs.items()},
             "status": status,
-            "health_score": health_score,
+            "health_score": health,
             "health_probabilities": {k: round(v * 100, 1) for k, v in health_probs.items()},
             "power_output": round(power_output, 2),
-            "power_loss_pct": power_loss_pct,
+            "expected_power": round(dx.expected_power(rated_power, temperature), 1),
+            "performance_ratio": round(pr, 3),
+            "power_loss_pct": dx.power_loss_pct(power_output, rated_power, temperature),
             "degradation_forecast": forecast,
             "recommendation": recommendation,
+            "analysis_mode": mode,
         }
-
-    @staticmethod
-    def _build_recommendation(status: str, defect: str, forecast: List[dict]) -> str:
-        end_health = forecast[-1]["predicted_health"] if forecast else None
-        if status == "Critical":
-            return f"Critical condition detected ({defect}). Schedule immediate on-site inspection and repair."
-        if status == "Warning":
-            if end_health is not None and end_health < forecast[0]["predicted_health"] - 5:
-                return (f"Degradation is accelerating (projected {end_health}% at "
-                        f"{FORECAST_HORIZONS_DAYS[-1]} days). Inspection recommended within the next maintenance cycle.")
-            return "Panel shows early warning signs. Monitor closely and plan a routine inspection."
-        return "Panel is operating normally. Continue standard maintenance schedule."
 
 
 # Singleton instance used by the routers
